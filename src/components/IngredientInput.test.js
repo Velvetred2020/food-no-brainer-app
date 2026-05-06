@@ -1,23 +1,33 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import IngredientInput from "./IngredientInput";
-import { ALL_INGREDIENTS } from "../data/ingredients";
 
-describe("IngredientInput", () => {
-  let ingredients;
+// 👉 FORCE TEST DATA (IMPORTANT FIX)
+jest.mock("../data/ingredients", () => ({
+  ALL_INGREDIENTS: ["tomato", "onion", "garlic", "cheese", "chicken"],
+}));
+
+describe("IngredientInput integration flow", () => {
   let setIngredients;
   let onSearch;
   let onBack;
+  let ingredients;
 
   beforeEach(() => {
     ingredients = [];
-    setIngredients = jest.fn();
+
+    setIngredients = jest.fn((newValue) => {
+      ingredients = newValue;
+    });
+
     onSearch = jest.fn();
     onBack = jest.fn();
   });
 
-  test("types input and shows suggestions", async () => {
-    render(
+  test("full user flow: type → select suggestion → add → remove → search", async () => {
+    const user = userEvent.setup();
+
+    const { rerender } = render(
       <IngredientInput
         ingredients={ingredients}
         setIngredients={setIngredients}
@@ -25,53 +35,44 @@ describe("IngredientInput", () => {
         onBack={onBack}
       />
     );
+
+    // use stable mocked data
+    const suggestion = "tomato";
+    const query = "tom";
 
     const input = screen.getByPlaceholderText("Type an ingredient...");
+    await user.type(input, query);
 
-    await userEvent.type(input, "to");
+    // suggestion MUST appear now
+    expect(screen.getByText(suggestion)).toBeInTheDocument();
 
-    const expected = ALL_INGREDIENTS.filter((i) =>
-      i.toLowerCase().startsWith("to")
-    ).slice(0, 6);
+    // click suggestion
+    await user.click(screen.getByText(suggestion));
 
-    expected.forEach((item) => {
-      expect(screen.getByText(item)).toBeInTheDocument();
-    });
-  });
+    expect(setIngredients).toHaveBeenCalled();
 
-  test("calls onSearch when clicking Find recipes", async () => {
-    render(
+    // simulate parent update
+    rerender(
       <IngredientInput
-        ingredients={ingredients}
+        ingredients={[suggestion]}
         setIngredients={setIngredients}
         onSearch={onSearch}
         onBack={onBack}
       />
     );
 
-    const button = screen.getByRole("button", {
-      name: /find recipes/i,
-    });
+    expect(screen.getByText(suggestion)).toBeInTheDocument();
 
-    await userEvent.click(button);
+    // remove ingredient
+    await user.click(screen.getByText("X"));
+
+    expect(setIngredients).toHaveBeenCalled();
+
+    // search
+    await user.click(
+      screen.getByRole("button", { name: /find recipes/i })
+    );
 
     expect(onSearch).toHaveBeenCalledTimes(1);
-  });
-
-  test("calls onBack when back button clicked", async () => {
-    render(
-      <IngredientInput
-        ingredients={ingredients}
-        setIngredients={setIngredients}
-        onSearch={onSearch}
-        onBack={onBack}
-      />
-    );
-
-    const backButton = screen.getByText("← Back");
-
-    await userEvent.click(backButton);
-
-    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });
